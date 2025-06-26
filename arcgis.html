@@ -1,0 +1,776 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
+    <title>3B Arazi, Gölge, Eğim ve Görüş Alanı Analizi</title>
+    <link rel="stylesheet" href="https://js.arcgis.com/4.32/esri/themes/light/main.css" />
+    <script src="https://js.arcgis.com/4.32/"></script>
+    <style>
+      html, body, #viewDiv { height: 100%; width: 100%; padding: 0; margin: 0; }
+      #analysisControls {
+        position: absolute;
+        right: 2vw;
+        top: 2vw;
+        width: 270px;
+        max-width: 95vw;
+        max-height: 88vh;
+        z-index: 20;
+        background: white;
+        border-radius: 14px;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+        padding: 0;
+        font-family: inherit;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+      .analysis-section {
+        margin-bottom: 0.7rem;
+        padding: 1rem 1rem 0.4rem 1rem;
+        border-bottom: 1px solid #e1e1e1;
+        background: #fcfcfc;
+      }
+      .analysis-section:last-child { border-bottom: none; }
+      .analysis-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.3rem;
+      }
+      .analysis-title {
+        font-weight: bold;
+        font-size: 1em;
+        color: #24292f;
+      }
+      .status-badge {
+        padding: 0.23em 0.7em;
+        border-radius: 12px;
+        font-size: 0.68em;
+        font-weight: bold;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        margin-left: 8px;
+      }
+      .status-active {
+        background: #d4f5d4; color: #2d5a2d; border: 1px solid #a6e3a6;
+      }
+      .status-inactive {
+        background: #eee; color: #666; border: 1px solid #ccc;
+      }
+      .status-creating {
+        background: #fff3cd; color: #856404; border: 1px solid #ffeeba;
+      }
+      .analysis-btn {
+        width: 100%; text-align: left;
+        background: #f6f8fa;
+        border: 1px solid #e1e4e8;
+        border-radius: 6px;
+        padding: 0.5em 1em;
+        font-weight: bold;
+        color: #222;
+        font-size: 0.98em;
+        margin-bottom: 0.5em;
+        cursor: pointer;
+        transition: background 0.13s;
+      }
+      .analysis-btn:hover { background: #e8f1fa; }
+      .analysis-btn.active { background: #bee1fa; border-color: #90caff;}
+      #instructions {
+        margin: 0.7em 0 0.3em 0;
+        color: #3b3b3b;
+        background: #edf7fd;
+        border-left: 4px solid #5eb3f7;
+        padding: 0.55em 0.8em;
+        border-radius: 4px;
+        font-size: 0.93em;
+        min-height: 2em;
+        font-style: italic;
+        word-break: break-word;
+      }
+      #shadowPanel {
+        position: absolute;
+        top: 2vw;
+        right: calc(2vw + 270px);
+        width: 205px;
+        max-width: 205px;
+        min-width: 205px;
+        z-index: 130;
+        background: white;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.16);
+        border-radius: 14px;
+        border: 2px solid #dbeafe;
+        padding: 1em 1.15em 1em 1.15em;
+        display: none;
+        overflow-y: auto;
+      }
+      #shadowPanel.active { display: block; }
+      #shadowPanelHeader {
+        font-weight: bold;
+        font-size: 1.03em;
+        color: #1a4161;
+        margin-bottom: 0.5em;
+        letter-spacing: 0.02em;
+        text-align: left;
+      }
+      #shadowCastDiv {
+        margin-bottom: 0.2em;
+        width: 100%;
+        min-width: 100px;
+      }
+      #viewDiv .shadow-cast-embed {
+        position: absolute;
+        top: 2vw;
+        right: calc(2vw + 270px);
+        z-index: 200;
+        width: 205px;
+        min-width: 205px;
+        max-width: 205px;
+        pointer-events: auto;
+        background: transparent;
+      }
+      @media (max-width: 700px) {
+        #shadowPanel,
+        #viewDiv .shadow-cast-embed { width: 98vw; left: 1vw; right: 1vw; min-width: 0; top: 2vw; }
+        #analysisControls { max-width: 98vw; }
+        #terrainAnalysisSuiteRow { flex-direction:column !important; align-items: flex-start !important; }
+        #terrainAnalysisPanel { width:98vw !important; min-width:0 !important; left:auto !important; right:2vw !important; }
+      }
+      #analysisControls {
+        overflow-y: auto;
+      }
+      #terrainAnalysisDiv {
+        background-color: var(--calcite-color-background, #fff);
+        padding: 10px;
+        overflow-y: auto;
+        width: 420px;
+        max-width: 420px;
+        min-width: 420px;
+        border-radius: 12px;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.11);
+      }
+      #terrainAnalysisDiv .calcite-label { margin-bottom: 0.5em; }
+      #compassRoseDiv {
+        display: flex;
+        flex-direction: row;
+        justify-content: space-evenly;
+      }
+      #compassRoseSvg {
+        width: 130px;
+      }
+      #compassRoseSvg text {
+        fill: var(--calcite-color-text-1, #222);
+        font-size: 6px;
+      }
+      .roseDirection {
+        fill: none;
+        stroke: var(--calcite-color-border-input, #7d7d7d);
+        stroke-width: 1px;
+        pointer-events: all;
+        cursor: pointer;
+      }
+      .roseDirection.active {
+        fill: var(--calcite-color-brand, #007ac2);
+      }
+      #colorButton {
+        border: 1px solid var(--calcite-color-border-input, #7d7d7d);
+        width: 35px;
+        height: 25px;
+        background-color: rgb(0, 122, 194);
+        cursor: pointer;
+      }
+      #terrainAnalysisSuiteRow {
+        position: absolute;
+        top: 2vw;
+        right: 2vw;
+        display: flex;
+        flex-direction: row;
+        align-items: flex-start;
+        z-index: 25;
+        gap: 0px;
+      }
+      #analysisControls .analysis-section:first-child {
+        display: none;
+      }
+      #analysisControls .suite-panel-title-bar {
+        font-weight: bold;
+        font-size: 1.1em;
+        color: #1a4161;
+        letter-spacing:0.01em;
+        padding: 1.1em 1em 0.6em 1em;
+        text-align: center;
+        width: 100%;
+        background: #f4f8fb;
+        border-radius: 14px 14px 0 0;
+        box-sizing: border-box;
+        border-bottom: 1px solid #e1e1e1;
+        margin-bottom:0.7em;
+      }
+      #terrainAnalysisPanel {
+        position: absolute;
+        top: 2vw;
+        right: calc(2vw + 270px);
+        z-index: 130;
+        display: none;
+      }
+      #terrainAnalysisPanel.active { display: block; }
+      .terrain-panel-title {
+        font-weight: bold;
+        font-size: 1.1em;
+        color: #1a4161;
+        letter-spacing:0.01em;
+        margin-bottom: 0.2em;
+        white-space:nowrap;
+        background: #f4f8fb;
+        border-radius: 14px 0 0 14px;
+        padding: 1.1em 1em 0.6em 1em;
+        box-sizing: border-box;
+        width: 420px;
+        text-align: center;
+        border-right: 1px solid #e1e1e1;
+      }
+      .suite-panel-title {
+        font-weight: bold;
+        font-size: 1.1em;
+        color: #1a4161;
+        letter-spacing:0.01em;
+        margin-bottom: 0.2em;
+        white-space:nowrap;
+        background: #f4f8fb;
+        border-radius: 0 14px 14px 0;
+        padding: 1.1em 1em 0.6em 1em;
+        box-sizing: border-box;
+        width: 270px;
+        text-align: center;
+        border-left: 1px solid #e1e1e1;
+      }
+    </style>
+    <script type="module" src="https://js.arcgis.com/calcite-components/3.0.3/calcite.esm.js"></script>
+  </head>
+  <body>
+    <div id="viewDiv"></div>
+    <!-- Combined title row: initially hidden, only shown when terrain analysis is active -->
+    <div id="terrainAnalysisSuiteRow" style="display:none;">
+      <div class="terrain-panel-title">Özel Yükseklik ve Eğim</div>
+      <div class="suite-panel-title">3B Analiz Menüsü</div>
+    </div>
+    <div id="analysisControls">
+      <div class="suite-panel-title-bar">3B Arazi Analiz Paketi</div>
+      <div class="analysis-section">
+        <div class="analysis-header">
+          <div class="analysis-title">Görüş Alanı</div>
+          <div id="viewshedStatus" class="status-badge status-inactive">Hazır</div>
+        </div>
+        <button class="analysis-btn" id="viewshedBtn">Görüş Alanı Oluştur</button>
+      </div>
+      <div class="analysis-section">
+        <div class="analysis-header">
+          <div class="analysis-title">Gölge</div>
+          <div id="shadowStatus" class="status-badge status-inactive">Hazır</div>
+        </div>
+        <button class="analysis-btn" id="shadowBtn">Gölge Analizi</button>
+      </div>
+      <div class="analysis-section">
+        <div class="analysis-header">
+          <div class="analysis-title">Eğim</div>
+          <div id="slopeStatus" class="status-badge status-inactive">Hazır</div>
+        </div>
+        <button class="analysis-btn" id="slopeBtn">Eğim Rasterını Göster</button>
+      </div>
+      <div class="analysis-section">
+        <div class="analysis-header">
+          <div class="analysis-title">Eğim Yönü</div>
+          <div id="directionStatus" class="status-badge status-inactive">Hazır</div>
+        </div>
+        <button class="analysis-btn" id="directionBtn">Eğimin Baktığı Yön</button>
+      </div>
+      <div class="analysis-section">
+        <div class="analysis-header">
+          <div class="analysis-title">Arazi Analizi</div>
+          <div id="terrainStatus" class="status-badge status-inactive">Hazır</div>
+        </div>
+        <button class="analysis-btn" id="terrainBtn">Arazi Analizi</button>
+      </div>
+      <div id="instructions"></div>
+    </div>
+    <div id="shadowPanel">
+      <div id="shadowPanelHeader">Gölge Analizi</div>
+      <div id="shadowCastDiv"></div>
+    </div>
+    <!-- Terrain analysis panel (hidden by default, shown when terrain analysis is active) -->
+    <div id="terrainAnalysisPanel">
+      <div id="terrainAnalysisDiv">
+        <calcite-segmented-control id="analysisModeSegmentedControl">
+          <calcite-segmented-control-item icon-start="surface" value="Custom" checked>Özel</calcite-segmented-control-item>
+          <calcite-segmented-control-item icon-start="altitude" value="Elevation">Yükseklik</calcite-segmented-control-item>
+          <calcite-segmented-control-item icon-start="take-pedestrian-ramp" value="Slope">Eğim</calcite-segmented-control-item>
+        </calcite-segmented-control>
+        <br>
+        <calcite-label scale="s">
+          Saydamlık | %
+          <calcite-slider id="opacitySlider" value="20" label-handles max-label="100" min-label="0" ticks="10"></calcite-slider>
+        </calcite-label>
+        <div id="customAnalysisDiv">
+          <calcite-label scale="s">
+            Yükseklik | m
+            <calcite-slider id="elevationSlider" min-value="2000" max-value="9000" min="-500" max="9000" ticks="500"
+              step="50" snap label-handles max-label="Maks. Yükseklik" min-label="Min. Yükseklik"></calcite-slider>
+          </calcite-label>
+          <calcite-label scale="s">
+            Eğim | °
+            <calcite-slider id="slopeSlider" min-value="10" max-value="90" min="0" max="90" ticks="5" step="1" snap
+              label-handles max-label="Maks. Eğim" min-label="Min. Eğim"></calcite-slider>
+          </calcite-label>
+          <calcite-label scale="s">
+            Aspekt
+            <div id="compassRoseDiv">
+              <svg id="compassRoseSvg" xmlns="http://www.w3.org/2000/svg" viewBox="-50 -50 100 100">
+                <!-- Kuzey -->
+                <polygon points="0,-40 5,-15 -5,-15" data-aspect="n" class="roseDirection" />
+                <text x="0" y="-45" text-anchor="middle">K</text>
+                <!-- Kuzeydoğu -->
+                <polygon points="22,-22 15,-5 5,-15" data-aspect="ne" class="roseDirection" />
+                <text x="30" y="-30" text-anchor="middle">KD</text>
+                <!-- Doğu -->
+                <polygon points="40,0 15,5 15,-5" data-aspect="e" class="roseDirection" />
+                <text x="45" y="2" text-anchor="middle">D</text>
+                <!-- Güneydoğu -->
+                <polygon points="22,22 5,15 15,5" data-aspect="se" class="roseDirection active" />
+                <text x="30" y="30" text-anchor="middle">GD</text>
+                <!-- Güney -->
+                <polygon points="0,40 -5,15 5,15" data-aspect="s" class="roseDirection active" />
+                <text x="0" y="48" text-anchor="middle">G</text>
+                <!-- Güneybatı -->
+                <polygon points="-22,22 -15,5 -5,15" data-aspect="sw" class="roseDirection active" />
+                <text x="-30" y="30" text-anchor="middle">GB</text>
+                <!-- Batı -->
+                <polygon points="-40,0 -15,-5 -15,5" data-aspect="w" class="roseDirection" />
+                <text x="-45" y="2" text-anchor="middle">B</text>
+                <!-- Kuzeybatı -->
+                <polygon points="-22,-22 -5,-15 -15,-5" data-aspect="nw" class="roseDirection" />
+                <text x="-30" y="-30" text-anchor="middle">KB</text>
+              </svg>
+            </div>
+          </calcite-label>
+          <calcite-label scale="s">
+            Renk
+            <calcite-popover reference-element="colorButton" closable>
+              <calcite-color-picker id="colorPicker" format="rgb" closable></calcite-color-picker>
+            </calcite-popover>
+            <button id="colorButton"></button>
+          </calcite-label>
+        </div>
+      </div>
+    </div>
+    <script>
+      require([
+        "esri/WebScene",
+        "esri/views/SceneView",
+        "esri/analysis/ViewshedAnalysis",
+        "esri/layers/ImageryTileLayer",
+        "esri/layers/GraphicsLayer",
+        "esri/layers/support/RasterFunction",
+        "esri/layers/support/rasterFunctionUtils",
+        "esri/widgets/ShadowCast"
+      ], function(
+        WebScene,
+        SceneView,
+        ViewshedAnalysis,
+        ImageryTileLayer,
+        GraphicsLayer,
+        RasterFunction,
+        rasterFunctionUtils,
+        ShadowCast
+      ) {
+        const webscene = new WebScene({ portalItem: { id: "c8486d8fdbc34e468e5d5dc2458c0aa3" } });
+        const view = new SceneView({ map: webscene, container: "viewDiv" });
+
+        let viewshedAnalysis = null, slopeLayer = null, directionLayer = null;
+        let terrainLayer = null;
+        let graphicsLayer = new GraphicsLayer();
+        view.map.add(graphicsLayer);
+
+        let shadowWidget = null;
+
+        function setStatus(which, status, msg) {
+          const el = document.getElementById(which + "Status");
+          // Turkish status
+          if (msg === "Ready") msg = "Hazır";
+          if (msg === "Creating...") msg = "Oluşturuluyor...";
+          if (msg === "Active") msg = "Aktif";
+          el.textContent = msg;
+          el.className = "status-badge status-" + status;
+        }
+        function resetAllStatus() {
+          setStatus("viewshed", "inactive", "Hazır");
+          setStatus("shadow", "inactive", "Hazır");
+          setStatus("slope", "inactive", "Hazır");
+          setStatus("direction", "inactive", "Hazır");
+          setStatus("terrain", "inactive", "Hazır");
+        }
+        function setActiveBtn(id, forceActivate) {
+          ["viewshedBtn","shadowBtn","slopeBtn","directionBtn","terrainBtn"].forEach(b=>{
+            let btn = document.getElementById(b);
+            if (btn && b === id) {
+              if (forceActivate === false) btn.classList.remove("active");
+              else btn.classList.add("active");
+            }
+          });
+        }
+        function setInstructions(msg) {
+          // Turkish instructions
+          if (!msg || msg === "") { document.getElementById("instructions").innerText = ""; return; }
+          msg = msg.replace("Click in the scene to place observer and drag to set direction.","Haritada gözlemci yerleştirmek için tıklayın ve yönü belirlemek için sürükleyin.");
+          msg = msg.replace("Viewshed created.","Görüş alanı oluşturuldu.");
+          msg = msg.replace("ShadowCast tool enabled. Use the widget to analyze shadows. Switch scenario below.","Gölge Analizi aracı etkin. Gölge analizini yapmak için aracı kullanın.");
+          msg = msg.replace("Slope raster displayed. High values = steeper slopes.","Eğim rasterı gösterildi. Yüksek değerler = daha dik eğimler.");
+          msg = msg.replace("Aspect (direction) raster displayed. Color shows surface facing direction.","Aspekt (yön) rasterı gösterildi. Renkler yüzeyin baktığı yönü gösterir.");
+          msg = msg.replace("Use the panel to adjust custom terrain analysis or switch to slope/elevation visualization.","Özel arazi analizini ayarlamak veya eğim/yükseklik görselleştirmesine geçmek için paneli kullanın.");
+          msg = msg.replace("Select an analysis to begin.","Başlamak için bir analiz seçin.");
+          msg = msg.replace("ShadowCast tool enabled. Use the widget to analyze shadows.","Gölge Analizi aracı etkin. Gölgeyi analiz etmek için aracı kullanın.");
+          msg = msg.replace("Creating...","Oluşturuluyor...");
+          msg = msg.replace("Ready","Hazır");
+          msg = msg.replace("Active","Aktif");
+          document.getElementById("instructions").innerText = msg;
+        }
+
+        function showTitlesRow(show) {
+          document.getElementById("terrainAnalysisSuiteRow").style.display = show ? "flex" : "none";
+        }
+
+        // multi-active logic for all buttons
+        function multiButton(btnId, analysisFn, clearFn) {
+          let btn = document.getElementById(btnId);
+          btn.addEventListener("click", function() {
+            let isActive = btn.classList.contains("active");
+            if (isActive) {
+              btn.classList.remove("active");
+              if (clearFn) clearFn();
+            } else {
+              btn.classList.add("active");
+              if (analysisFn) analysisFn();
+            }
+          });
+        }
+
+        // VIEWSHED
+        multiButton("viewshedBtn", async function() {
+          setActiveBtn("viewshedBtn", true);
+          setStatus("viewshed", "creating", "Oluşturuluyor...");
+          setInstructions("Haritada gözlemci yerleştirmek için tıklayın ve yönü belirlemek için sürükleyin.");
+          if (!viewshedAnalysis) {
+            viewshedAnalysis = new ViewshedAnalysis();
+            await view.when();
+            view.analyses.add(viewshedAnalysis);
+          }
+          const analysisView = await view.whenAnalysisView(viewshedAnalysis);
+          analysisView.interactive = true;
+          analysisView.createViewsheds().then(() => {
+            setStatus("viewshed", "active", "Aktif");
+            setInstructions("Görüş alanı oluşturuldu.");
+          });
+          document.getElementById("shadowPanel").classList.remove("active");
+          if (shadowWidget) {
+            view.ui.remove(shadowWidget);
+            shadowWidget.destroy();
+            shadowWidget = null;
+          }
+        }, function() {
+          setStatus("viewshed", "inactive", "Hazır");
+          if (viewshedAnalysis) {
+            view.analyses.remove(viewshedAnalysis);
+            viewshedAnalysis = null;
+          }
+        });
+
+        // SHADOW
+        multiButton("shadowBtn", function() {
+          setActiveBtn("shadowBtn", true);
+          setStatus("shadow", "creating", "Aktif");
+          setInstructions("Gölge Analizi aracı etkin. Gölgeyi analiz etmek için aracı kullanın.");
+          // Position shadowPanel like terrainAnalysisPanel and bring it to front
+          document.getElementById("shadowPanel").classList.add("active");
+          document.getElementById("shadowPanel").style.zIndex = 131;
+
+          // Remove any previous ShadowCast widget
+          if (shadowWidget) {
+            view.ui.remove(shadowWidget);
+            shadowWidget.destroy();
+            shadowWidget = null;
+          }
+
+          // Add ShadowCast widget to the same position as the shadowPanel (top-right, like ArcGIS sample)
+          shadowWidget = new ShadowCast({ view: view });
+          view.ui.add(shadowWidget, { position: "manual" });
+          // Move widget's container into our shadowPanel
+          const panel = document.getElementById("shadowCastDiv");
+          panel.innerHTML = "";
+          panel.appendChild(shadowWidget.container);
+
+          shadowWidget.viewModel.date = new Date("2025-06-06T12:00:00");
+          shadowWidget.viewModel.visualizationType = "duration";
+        }, function() {
+          setStatus("shadow", "inactive", "Hazır");
+          document.getElementById("shadowPanel").classList.remove("active");
+          if (shadowWidget) {
+            view.ui.remove(shadowWidget);
+            shadowWidget.destroy();
+            shadowWidget = null;
+          }
+          document.getElementById("shadowPanel").style.zIndex = 130;
+        });
+
+        // SLOPE (Raster Layer)
+        multiButton("slopeBtn", function() {
+          setActiveBtn("slopeBtn", true);
+          setStatus("slope", "active", "Aktif");
+          setInstructions("Eğim rasterı gösterildi. Yüksek değerler = daha dik eğimler.");
+          document.getElementById("shadowPanel").classList.remove("active");
+          if (shadowWidget) {
+            view.ui.remove(shadowWidget);
+            shadowWidget.destroy();
+            shadowWidget = null;
+          }
+          if (!slopeLayer) {
+            slopeLayer = new ImageryTileLayer({
+              url: "https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer",
+              rasterFunction: {
+                functionName: "Slope",
+                functionArguments: { SlopeType: 1, ZFactor: 1 },
+                variableName: "Raster"
+              },
+              opacity: 0.6,
+              title: "Eğim"
+            });
+            view.map.add(slopeLayer);
+          }
+        }, function() {
+          setStatus("slope", "inactive", "Hazır");
+          if (slopeLayer) {
+            view.map.remove(slopeLayer);
+            slopeLayer = null;
+          }
+        });
+
+        // DIRECTION/ASPECT (Raster Layer)
+        multiButton("directionBtn", function() {
+          setActiveBtn("directionBtn", true);
+          setStatus("direction", "active", "Aktif");
+          setInstructions("Aspekt (yön) rasterı gösterildi. Renkler yüzeyin baktığı yönü gösterir.");
+          document.getElementById("shadowPanel").classList.remove("active");
+          if (shadowWidget) {
+            view.ui.remove(shadowWidget);
+            shadowWidget.destroy();
+            shadowWidget = null;
+          }
+          if (!directionLayer) {
+            directionLayer = new ImageryTileLayer({
+              url: "https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer",
+              rasterFunction: {
+                functionName: "Aspect",
+                functionArguments: {},
+                variableName: "Raster"
+              },
+              opacity: 0.7,
+              title: "Yön/Aspekt"
+            });
+            view.map.add(directionLayer);
+          }
+        }, function() {
+          setStatus("direction", "inactive", "Hazır");
+          if (directionLayer) {
+            view.map.remove(directionLayer);
+            directionLayer = null;
+          }
+        });
+
+        // TERRAIN ANALYSIS (RASTER FUNCTION PANEL)
+        multiButton("terrainBtn", function() {
+          setActiveBtn("terrainBtn", true);
+          setStatus("terrain", "active", "Aktif");
+          setInstructions("Özel arazi analizini ayarlamak veya eğim/yükseklik görselleştirmesine geçmek için paneli kullanın.");
+          document.getElementById("shadowPanel").classList.remove("active");
+          document.getElementById("shadowPanel").style.zIndex = 130;
+          document.getElementById("terrainAnalysisPanel").classList.add("active");
+          showTitlesRow(true);
+          if (shadowWidget) {
+            view.ui.remove(shadowWidget);
+            shadowWidget.destroy();
+            shadowWidget = null;
+          }
+          if (!terrainLayer) {
+            terrainLayer = new ImageryTileLayer({
+              url: "https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer",
+              title: "Özel Analiz",
+              opacity: 0.8
+            });
+            view.map.add(terrainLayer);
+          }
+        }, function() {
+          setStatus("terrain", "inactive", "Hazır");
+          document.getElementById("terrainAnalysisPanel").classList.remove("active");
+          showTitlesRow(false);
+          if (terrainLayer) {
+            view.map.remove(terrainLayer);
+            terrainLayer = null;
+          }
+        });
+
+        // --- Terrain Analysis Panel Logic ---
+        let customAnalysisParams = {
+          elevation: { min: 2000, max: 9000 },
+          slope: { min: 10, max: 90 },
+          aspects: { N: false, NE: false, E: false, SE: true, S: true, SW: true, W: false, NW: false }
+        };
+        let activeAnalysisMode = "Custom";
+        let customColor = [0, 122, 194];
+
+        const slope = rasterFunctionUtils.slope({
+          slopeType: "degree",
+          zFactor: 1
+        });
+        const remapSlope = rasterFunctionUtils.remap({
+          rangeMaps: [
+            { range: [30, 35], output: 30 },
+            { range: [35, 40], output: 35 },
+            { range: [40, 45], output: 40 },
+            { range: [45, 90], output: 45 }
+          ],
+          outputPixelType: "u8",
+          raster: slope
+        });
+        const colorMapSlope = rasterFunctionUtils.colormap({
+          colormap: [
+            [30, 255, 255, 0],
+            [35, 255, 165, 0],
+            [40, 255, 0, 0],
+            [45, 128, 0, 128]
+          ],
+          raster: remapSlope
+        });
+        const colorMapElevation = rasterFunctionUtils.colormap({
+          colorRampName: "elevation1"
+        });
+        function createCustomAnalysis(color = customColor) {
+          const elevationMask = rasterFunctionUtils.mask({
+            includedRanges: [[customAnalysisParams.elevation.min, customAnalysisParams.elevation.max]],
+            noDataValues: [[-9999]],
+            noDataInterpretation: "match-any"
+          });
+          const slopeFunction = rasterFunctionUtils.slope({
+            slopeType: "degree",
+            zFactor: 1,
+            raster: elevationMask
+          });
+          const slopeMask = rasterFunctionUtils.mask({
+            includedRanges: [[customAnalysisParams.slope.min, customAnalysisParams.slope.max]],
+            noDataValues: [[-9999]],
+            noDataInterpretation: "match-any",
+            raster: slopeFunction
+          });
+          const greaterThanSlope0 = rasterFunctionUtils.greaterThanEqual({
+            raster: slopeMask,
+            raster2: 0
+          });
+          const aspectFunction = rasterFunctionUtils.aspect({
+            raster: elevationMask
+          });
+          const remapAspectFunction = rasterFunctionUtils.remap({
+            rangeMaps: [
+              { range: [-Infinity, 0], output: 1 },
+              { range: [360, Infinity], output: 1 },
+              { range: [337.5, 360], output: +customAnalysisParams.aspects.N },
+              { range: [0, 22.5], output: +customAnalysisParams.aspects.N },
+              { range: [22.5, 67.5], output: +customAnalysisParams.aspects.NE },
+              { range: [67.5, 112.5], output: +customAnalysisParams.aspects.E },
+              { range: [112.5, 157.5], output: +customAnalysisParams.aspects.SE },
+              { range: [157.5, 202.5], output: +customAnalysisParams.aspects.S },
+              { range: [202.5, 247.5], output: +customAnalysisParams.aspects.SW },
+              { range: [247.5, 292.5], output: +customAnalysisParams.aspects.W },
+              { range: [292.5, 337.5], output: +customAnalysisParams.aspects.NW }
+            ],
+            raster: aspectFunction
+          });
+          const combineAspectSlope = rasterFunctionUtils.booleanAnd({
+            raster: greaterThanSlope0,
+            raster2: remapAspectFunction
+          });
+          const colorMapFinal = rasterFunctionUtils.colormap({
+            colormap: [[1, ...color]],
+            raster: combineAspectSlope
+          });
+          return colorMapFinal;
+        }
+        function setupTerrainAnalysisPanel() {
+          // Opaklık
+          document.getElementById("opacitySlider").addEventListener("calciteSliderInput", (event) => {
+            if (terrainLayer) terrainLayer.opacity = 1 - event.target.value / 100;
+          });
+          // Yükseklik
+          document.getElementById("elevationSlider").addEventListener("calciteSliderChange", (event) => {
+            customAnalysisParams.elevation = {
+              min: event.target.minValue,
+              max: event.target.maxValue
+            };
+            if (terrainLayer) terrainLayer.rasterFunction = createCustomAnalysis(customColor);
+          });
+          // Eğim
+          document.getElementById("slopeSlider").addEventListener("calciteSliderChange", (event) => {
+            customAnalysisParams.slope = { min: event.target.minValue, max: event.target.maxValue };
+            if (terrainLayer) terrainLayer.rasterFunction = createCustomAnalysis(customColor);
+          });
+          // Pusula gülü
+          const roseDirections = document.getElementsByClassName("roseDirection");
+          for (const roseDirection of roseDirections) {
+            roseDirection.addEventListener("click", () => {
+              const active = roseDirection.classList.toggle("active");
+              const aspect = roseDirection.getAttribute("data-aspect").toUpperCase();
+              customAnalysisParams.aspects[aspect] = active;
+              if (terrainLayer) terrainLayer.rasterFunction = createCustomAnalysis(customColor);
+            });
+          }
+          // Renk seçici
+          const colorPicker = document.getElementById("colorPicker");
+          const colorButton = document.getElementById("colorButton");
+          colorPicker.addEventListener("calciteColorPickerChange", (event) => {
+            const color = event.target.value;
+            colorButton.style.backgroundColor = `rgb(${color.r}, ${color.g}, ${color.b})`;
+            customColor = [color.r, color.g, color.b];
+            if (terrainLayer) terrainLayer.rasterFunction = createCustomAnalysis(customColor);
+          });
+          // Segmentli kontrol (Özel/Yükseklik/Eğim)
+          document.getElementById("analysisModeSegmentedControl").addEventListener("calciteSegmentedControlChange", (event) => {
+            activeAnalysisMode = event.target.value;
+            if (activeAnalysisMode === "Custom") {
+              document.getElementById("customAnalysisDiv").style.display = "block";
+              document.getElementById("compassRoseSvg").style.display = "block";
+            } else {
+              document.getElementById("customAnalysisDiv").style.display = "none";
+              document.getElementById("compassRoseSvg").style.display = "none";
+            }
+            if (terrainLayer) {
+              terrainLayer.renderer = null;
+              switch (activeAnalysisMode) {
+                case "Slope":
+                  terrainLayer.title = activeAnalysisMode + " | °";
+                  terrainLayer.rasterFunction = colorMapSlope;
+                  break;
+                case "Elevation":
+                  terrainLayer.title = activeAnalysisMode + " | m";
+                  terrainLayer.rasterFunction = colorMapElevation;
+                  break;
+                case "Custom":
+                default:
+                  terrainLayer.title = activeAnalysisMode + " Analiz";
+                  terrainLayer.rasterFunction = createCustomAnalysis(customColor);
+                  break;
+              }
+            }
+          });
+        }
+        setupTerrainAnalysisPanel();
+        resetAllStatus(); setInstructions("Başlamak için bir analiz seçin.");
+      });
+    </script>
+  </body>
+</html>
